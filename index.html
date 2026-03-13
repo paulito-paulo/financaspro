@@ -1578,40 +1578,101 @@ function updateInstallmentPreview() {
   }
 }
 
-function saveSaida() {
-  const dia = parseInt(document.getElementById('saidaDia').value);
+async function saveSaida() {
+  const dia   = parseInt(document.getElementById('saidaDia').value);
   const valor = parseFloat(document.getElementById('saidaValor').value);
-  const desc = document.getElementById('saidaDesc').value.trim();
-  const cat = document.getElementById('saidaCat').value;
-  const pay = document.getElementById('saidaPagamento').value;
-  const parc = pay==='Crédito' ? parseInt(document.getElementById('saidaParcelas').value)||1 : 1;
-  if(!dia||!valor||!desc) return toast('Preencha todos os campos','warning');
+  const desc  = document.getElementById('saidaDesc').value.trim();
+  const cat   = document.getElementById('saidaCat').value;
+  const pay   = document.getElementById('saidaPagamento').value;
+  const parcSelect = parseInt(document.getElementById('saidaParcelas').value) || 1;
+  const parc = pay === 'Crédito' ? parcSelect : 1;
+
+  if(!dia || !valor || !desc) return toast('Preencha todos os campos', 'warning');
 
   const editId = document.getElementById('editSaidaId').value;
+
   if(editId) {
-    const idx = DATA.expenses.findIndex(i=>i.id===editId);
-    if(idx>-1) DATA.expenses[idx] = {...DATA.expenses[idx],day:dia,value:valor/parc,totalValue:valor,desc,cat,payment:pay,installments:parc};
-    toast('Saída atualizada!');
+    const original = DATA.expenses.find(i => i.id === editId);
+    if(!original) return toast('Registro não encontrado','error');
+
+    const hasGroup = original.installments > 1 && original.baseId;
+
+    if(hasGroup) {
+      // Pega todas as parcelas do grupo pelo baseId, ordenadas por installmentNum
+      const group = DATA.expenses
+        .filter(i => i.baseId === original.baseId)
+        .sort((a,b) => a.installmentNum - b.installmentNum);
+
+      const totalParcelas = group.length;
+      const parcVal = parseFloat((valor / totalParcelas).toFixed(2));
+      const descBase = desc.replace(/ \(\d+\/\d+\)$/, '');
+
+      // Atualiza cada parcela do grupo mantendo o mês/ano de cada uma
+      group.forEach((e, i) => {
+        const idx = DATA.expenses.findIndex(x => x.id === e.id);
+        if(idx > -1) {
+          DATA.expenses[idx] = {
+            ...DATA.expenses[idx],
+            day:           dia,
+            value:         parcVal,
+            totalValue:    valor,
+            desc:          `${descBase} (${i+1}/${totalParcelas})`,
+            cat,
+            payment:       pay,
+            installments:  totalParcelas
+          };
+        }
+      });
+      toast(`${totalParcelas} parcelas atualizadas!`);
+    } else {
+      // Registro simples sem parcelas
+      const idx = DATA.expenses.findIndex(i => i.id === editId);
+      if(idx > -1) {
+        DATA.expenses[idx] = {
+          ...DATA.expenses[idx],
+          day: dia, value: valor, totalValue: valor,
+          desc, cat, payment: pay, installments: 1
+        };
+      }
+      toast('Saída atualizada!');
+    }
   } else {
     const baseId = uid();
-    for(let i=0; i<parc; i++) {
-      let pm = DATA.currentMonth+i, py = DATA.currentYear;
-      while(pm>11){pm-=12;py++;}
+    const parcVal = parseFloat((valor / parc).toFixed(2));
+
+    for(let i = 0; i < parc; i++) {
+      let pm = DATA.currentMonth + i;
+      let py = DATA.currentYear;
+      while(pm > 11) { pm -= 12; py++; }
+
       DATA.expenses.push({
-        id: i===0?baseId:uid(),
+        id:             i === 0 ? baseId : uid(),
         baseId,
-        month:pm,year:py,
-        day:dia,
-        value:valor/parc,
-        totalValue:valor,
-        desc: parc>1 ? `${desc} (${i+1}/${parc})` : desc,
-        cat,payment:pay,
-        installments:parc,
-        installmentNum:i+1
+        month:          pm,
+        year:           py,
+        day:            dia,
+        value:          parcVal,
+        totalValue:     valor,
+        desc:           parc > 1 ? `${desc} (${i+1}/${parc})` : desc,
+        cat,
+        payment:        pay,
+        installments:   parc,
+        installmentNum: i + 1
       });
     }
-    toast(parc>1?`${parc} parcelas lançadas!`:'Saída registrada!');
+
+    if(parc > 1) {
+      const meses = Array.from({length: parc}, (_, i) => {
+        let pm = DATA.currentMonth + i, py = DATA.currentYear;
+        while(pm > 11){ pm -= 12; py++; }
+        return MONTHS_SHORT[pm] + '/' + py;
+      }).join(', ');
+      toast(`${parc} parcelas lançadas → ${meses}`);
+    } else {
+      toast('Saída registrada!');
+    }
   }
+
   saveData();
   closeModal('modalSaida');
   renderSaidas();
@@ -1623,12 +1684,17 @@ function editSaida(id) {
   if(!e) return;
   document.getElementById('editSaidaId').value = id;
   document.getElementById('saidaDia').value = e.day;
-  document.getElementById('saidaValor').value = e.totalValue||e.value;
-  document.getElementById('saidaDesc').value = e.desc.replace(/ \(\d+\/\d+\)$/,'');
+  document.getElementById('saidaValor').value = e.totalValue || e.value;
+  document.getElementById('saidaDesc').value = e.desc.replace(/ \(\d+\/\d+\)$/, '');
   document.getElementById('saidaCat').value = e.cat;
   document.getElementById('saidaPagamento').value = e.payment;
-  document.getElementById('saidaModalTitle').textContent = 'Editar Saída';
+  // Preenche número de parcelas corretamente
+  document.getElementById('saidaParcelas').value = e.installments > 1 ? e.installments : 1;
+  document.getElementById('saidaModalTitle').textContent = e.installments > 1
+    ? `Editar Saída (${e.installments}x — todas as parcelas serão atualizadas)`
+    : 'Editar Saída';
   openModal('modalSaida');
+  updateInstallmentPreview();
 }
 
 function deleteSaida(id) {
