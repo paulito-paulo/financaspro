@@ -1,379 +1,705 @@
-/* ============================================================
-   DB.JS — Supabase, Autenticação, Sessão, Sincronização
-   ============================================================ */
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinançasPro</title>
 
-// ── Configuração Supabase ─────────────────────────────────────
-const SUPA_URL   = 'https://zwpjcvfrpraicgeakkak.supabase.co';
-const SUPA_KEY   = 'sb_publishable_Bb8_M9ULTkXOmt3mTtuRKQ_n05u6DbM';
-const SESSION_KEY = 'financaspro_session_v3';
+  <!-- Fontes -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-/**
- * Requisição genérica para a API REST do Supabase.
- * @param {string} path   - Caminho da tabela/filtro (ex: "users?id=eq.123")
- * @param {string} method - GET | POST | PATCH | DELETE
- * @param {object} body   - Dados a enviar (para POST/PATCH)
- */
-async function sbFetch(path, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: {
-      'apikey':       SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_KEY,
-      'Content-Type': 'application/json',
-      'Prefer':       method === 'POST' ? 'return=representation' : '',
-    },
-  };
-  if (body) opts.body = JSON.stringify(body);
+  <!-- Estilos -->
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/modals.css">
 
-  const res  = await fetch(SUPA_URL + '/rest/v1/' + path, opts);
-  if (!res.ok) throw new Error(await res.text());
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js" defer></script>
+</head>
+<body>
 
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
+<!-- ============================================================
+     TELA DE LOGIN
+     ============================================================ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
 
-// ── Globais ───────────────────────────────────────────────────
-let CURRENT_USER = null;  // { id, username, name, color }
-let DATA         = null;  // dados financeiros do usuário logado
-let _saveTimer   = null;  // debounce do saveData
+    <div class="login-logo">
+      <div class="login-logo-icon">₿</div>
+      <div class="login-logo-text">Finan<span>ças</span>Pro</div>
+    </div>
 
-/** Retorna a inicial maiúscula de um nome */
-function getInitial(name) {
-  return (name || 'U').charAt(0).toUpperCase();
-}
+    <!-- Abas -->
+    <div class="login-tabs">
+      <div class="login-tab active" id="tabLogin"    onclick="switchLoginTab('login')">Entrar</div>
+      <div class="login-tab"        id="tabRegister" onclick="switchLoginTab('register')">Criar Conta</div>
+    </div>
 
-/** Hash simples para senha (local — senhas nunca são enviadas em plain text) */
-function hashPass(s) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 33) ^ s.charCodeAt(i)) >>> 0;
-  return h.toString(16);
-}
-
-// ── Login / Registro ──────────────────────────────────────────
-
-/** Alterna entre as abas "Entrar" e "Criar Conta" */
-function switchLoginTab(tab) {
-  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
-  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
-  document.getElementById('loginPanel').style.display    = tab === 'login'    ? 'block' : 'none';
-  document.getElementById('registerPanel').style.display = tab === 'register' ? 'block' : 'none';
-}
-
-/** Indicador visual de força de senha */
-function updatePwStrength(val) {
-  const fill = document.getElementById('pwStrengthFill');
-  const len  = val.length;
-  let pct = 0, color = 'var(--red)';
-  if (len >= 4)  { pct = 33; color = 'var(--red)';    }
-  if (len >= 7)  { pct = 66; color = 'var(--yellow)'; }
-  if (len >= 10) { pct = 100; color = 'var(--green)'; }
-  fill.style.width      = pct + '%';
-  fill.style.background = color;
-}
-
-/** Renderiza os chips de usuários conhecidos (cache local) */
-async function renderUsersList() {
-  const list    = document.getElementById('usersList');
-  const divider = document.getElementById('loginDivider');
-  const cached  = JSON.parse(localStorage.getItem('fp_known_users') || '[]');
-
-  if (!cached.length) {
-    list.innerHTML = '';
-    divider.style.display = 'none';
-    return;
-  }
-
-  divider.style.display = 'block';
-  list.innerHTML = cached.map(u => `
-    <div class="user-chip" onclick="quickLogin('${u.username}')">
-      <div class="user-avatar" style="background:${u.color};color:#fff">${getInitial(u.name)}</div>
-      <div class="user-info">
-        <div class="user-name">${u.name}</div>
-        <div class="user-sub">@${u.username}</div>
+    <!-- Painel de login -->
+    <div id="loginPanel">
+      <div class="login-title">Bem-vindo de volta</div>
+      <div class="login-sub">Selecione seu perfil ou entre com senha</div>
+      <div class="users-list" id="usersList"></div>
+      <div class="login-divider" id="loginDivider">ou entre com senha</div>
+      <div class="login-form">
+        <div class="form-group">
+          <label>Usuário</label>
+          <input type="text" id="loginUser" placeholder="Seu usuário">
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="loginPass" placeholder="••••••••"
+                 onkeydown="if(event.key==='Enter') doLogin()">
+        </div>
+        <button class="btn btn-primary btn-login" onclick="doLogin()">Entrar</button>
       </div>
-    </div>`).join('');
-}
+    </div>
 
-/** Preenche o campo de usuário para login rápido por chip */
-function quickLogin(uname) {
-  document.getElementById('loginUser').value = uname;
-  document.getElementById('loginPass').focus();
-}
+    <!-- Painel de registro -->
+    <div id="registerPanel" style="display:none">
+      <div class="login-title">Criar nova conta</div>
+      <div class="login-sub">Dados sincronizados na nuvem via Supabase</div>
+      <div class="login-form">
+        <div class="form-group">
+          <label>Nome completo</label>
+          <input type="text" id="regName" placeholder="Ex: João Silva">
+        </div>
+        <div class="form-group">
+          <label>Usuário</label>
+          <input type="text" id="regUser" placeholder="ex: joao123"
+                 oninput="this.value=this.value.toLowerCase().replace(/\s/g,'')">
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="regPass" placeholder="mínimo 4 caracteres"
+                 oninput="updatePwStrength(this.value)">
+          <div class="pw-strength"><div class="pw-strength-fill" id="pwStrengthFill"></div></div>
+        </div>
+        <div class="form-group">
+          <label>Cor do avatar</label>
+          <select id="regColor">
+            <option value="#7c6fff">Roxo</option>
+            <option value="#2dd4a0">Verde</option>
+            <option value="#ff5f5f">Vermelho</option>
+            <option value="#ffd166">Amarelo</option>
+            <option value="#4fc3f7">Azul</option>
+            <option value="#ff9a5c">Laranja</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-login" onclick="doRegister()">Criar Conta</button>
+      </div>
+    </div>
 
-/** Executa o login verificando usuário e senha no Supabase */
-async function doLogin() {
-  const uname = document.getElementById('loginUser').value.trim().toLowerCase();
-  const pass  = document.getElementById('loginPass').value;
-  if (!uname || !pass) return toast('Preencha usuário e senha', 'warning');
+  </div>
+</div>
 
-  setLoginLoading(true);
-  try {
-    const rows = await sbFetch(`users?username=eq.${encodeURIComponent(uname)}&select=*`);
-    if (!rows || !rows.length) return toast('Usuário não encontrado', 'error');
 
-    const u = rows[0];
-    if (u.pass_hash !== hashPass(pass)) return toast('Senha incorreta', 'error');
+<!-- ============================================================
+     PAINEL DO USUÁRIO (dropdown topbar)
+     ============================================================ -->
+<div class="user-panel" id="userPanel">
+  <div class="user-panel-header">
+    <div class="user-panel-avatar" id="upAvatar"></div>
+    <div>
+      <div class="user-panel-name"  id="upName"></div>
+      <div class="user-panel-email" id="upUser"></div>
+    </div>
+  </div>
+  <div class="user-panel-body">
+    <div class="user-panel-item" onclick="openModal('modalExportImport'); closeUserPanel()">
+      <span class="icon">⇅</span> Exportar / Importar Dados
+    </div>
+    <div class="user-panel-sep"></div>
+    <div class="user-panel-item" onclick="doLogout()" style="color:var(--red)">
+      <span class="icon">→</span> Sair da conta
+    </div>
+  </div>
+</div>
 
-    await loginAs(u);
-  } catch (e) {
-    toast('Erro de conexão com o banco de dados', 'error');
-    console.error(e);
-  } finally {
-    setLoginLoading(false);
-  }
-}
 
-/** Cria nova conta no Supabase e faz login automaticamente */
-async function doRegister() {
-  const name  = document.getElementById('regName').value.trim();
-  const uname = document.getElementById('regUser').value.trim().toLowerCase();
-  const pass  = document.getElementById('regPass').value;
-  const color = document.getElementById('regColor').value;
+<!-- ============================================================
+     MODAL — Exportar / Importar
+     ============================================================ -->
+<div class="modal-overlay" id="modalExportImport">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Exportar / Importar</div>
+      <button class="modal-close" onclick="closeModal('modalExportImport')">✕</button>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:14px">Gerencie seus dados financeiros</div>
 
-  if (!name || !uname || !pass) return toast('Preencha todos os campos', 'warning');
-  if (pass.length < 4)          return toast('Senha muito curta (mín. 4 caracteres)', 'warning');
-  if (!/^[a-z0-9_]+$/.test(uname)) return toast('Usuário: apenas letras, números e _', 'warning');
+    <div class="export-options">
+      <div class="export-card" onclick="exportJSON()">
+        <div class="export-card-icon">{ }</div>
+        <div class="export-card-title">Exportar JSON</div>
+        <div class="export-card-sub">Backup completo de todos os dados</div>
+      </div>
+      <div class="export-card" onclick="exportCSV()">
+        <div class="export-card-icon">⊞</div>
+        <div class="export-card-title">Exportar CSV</div>
+        <div class="export-card-sub">Tabela para Excel / Google Sheets</div>
+      </div>
+    </div>
 
-  setLoginLoading(true);
-  try {
-    const existing = await sbFetch(`users?username=eq.${encodeURIComponent(uname)}&select=id`);
-    if (existing && existing.length) return toast('Usuário já existe', 'error');
+    <div style="font-family:var(--sans);font-size:11px;font-weight:600;margin-bottom:10px">Importar JSON</div>
+    <div class="import-drop" id="importDrop"
+         onclick="document.getElementById('importFile').click()"
+         ondragover="event.preventDefault(); this.classList.add('over')"
+         ondragleave="this.classList.remove('over')"
+         ondrop="handleFileDrop(event)">
+      <div class="import-drop-icon">↑</div>
+      <div class="import-drop-text">Clique ou arraste o arquivo .json</div>
+      <div class="import-drop-sub">Substituirá dados atuais na nuvem</div>
+    </div>
+    <input type="file" id="importFile" accept=".json" style="display:none"
+           onchange="handleFileImport(this)">
+    <div class="import-preview" id="importPreview" style="display:none"></div>
 
-    const [newUser] = await sbFetch('users', 'POST', {
-      username:  uname,
-      name,
-      pass_hash: hashPass(pass),
-      color,
-    });
-    await sbFetch('user_data', 'POST', { user_id: newUser.id, data: getDefaultData() });
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalExportImport')">Fechar</button>
+      <button class="btn btn-primary" id="importConfirmBtn" style="display:none" onclick="confirmImport()">
+        Confirmar Importação
+      </button>
+    </div>
+  </div>
+</div>
 
-    toast('Conta criada! Entrando...', 'success');
-    await loginAs(newUser);
-  } catch (e) {
-    toast('Erro ao criar conta. Verifique a conexão.', 'error');
-    console.error(e);
-  } finally {
-    setLoginLoading(false);
-  }
-}
 
-/** Carrega dados do usuário do Supabase e entra na plataforma */
-async function loginAs(u) {
-  CURRENT_USER = u;
+<!-- ============================================================
+     OVERLAY SIDEBAR MOBILE
+     ============================================================ -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
-  try {
-    const rows = await sbFetch(`user_data?user_id=eq.${u.id}&select=data`);
-    DATA = (rows && rows.length && rows[0].data) ? rows[0].data : getDefaultData();
-  } catch (e) {
-    DATA = getDefaultData();
-  }
 
-  // Garante que todos os campos existem (migração de versões antigas)
-  DATA.incomes       = DATA.incomes       || [];
-  DATA.expenses      = DATA.expenses      || [];
-  DATA.fixedExpenses = DATA.fixedExpenses || [];
-  DATA.goals         = DATA.goals         || [];
-  DATA.notes         = DATA.notes         || [];
-  DATA.rules         = DATA.rules         || getDefaultData().rules;
-  if (DATA.currentMonth === undefined) DATA.currentMonth = new Date().getMonth();
-  if (DATA.currentYear  === undefined) DATA.currentYear  = new Date().getFullYear();
+<!-- ============================================================
+     SIDEBAR
+     ============================================================ -->
+<div class="sidebar" id="sidebar">
 
-  // Salva sessão e lista de usuários conhecidos localmente
-  localStorage.setItem(SESSION_KEY, JSON.stringify({
-    id: u.id, username: u.username, name: u.name, color: u.color,
-  }));
-  const known = JSON.parse(localStorage.getItem('fp_known_users') || '[]');
-  if (!known.find(k => k.username === u.username)) {
-    known.push({ username: u.username, name: u.name, color: u.color });
-    localStorage.setItem('fp_known_users', JSON.stringify(known));
-  }
+  <div class="logo">
+    <div class="logo-icon">₿</div>
+    <div class="logo-text">Finan<span>ças</span>Pro</div>
+  </div>
 
-  document.getElementById('loginScreen').classList.add('hidden');
-  updateUserUI();
-  updateMonthUI();
-  renderDashboard();
-  toast(`Bem-vindo, ${u.name.split(' ')[0]}! ☁ Dados sincronizados`, 'success');
-}
+  <div class="month-selector">
+    <div class="month-label">Período</div>
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">‹</button>
+      <span id="currentMonthLabel">Jan 2025</span>
+      <button onclick="changeMonth(1)">›</button>
+    </div>
+  </div>
 
-/** Desloga o usuário e volta para a tela de login */
-async function doLogout() {
-  CURRENT_USER = null;
-  DATA         = null;
-  localStorage.removeItem(SESSION_KEY);
-  closeUserPanel();
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('loginUser').value = '';
-  document.getElementById('loginPass').value = '';
-  await renderUsersList();
-  toast('Até logo!', 'success');
-}
+  <nav>
+    <div class="nav-section">Principal</div>
+    <div class="nav-item active" onclick="showPage('dashboard', this)">
+      <span class="icon">◈</span> Dashboard
+    </div>
 
-/** Ativa/desativa estado de carregamento nos botões de login */
-function setLoginLoading(on) {
-  document.querySelectorAll('.btn-login').forEach(b => {
-    b.disabled     = on;
-    b.textContent  = on ? 'Aguarde...' : (b.dataset.label || b.textContent);
-  });
-}
+    <div class="nav-section">Finanças</div>
+    <div class="nav-item" onclick="showPage('entradas', this)">
+      <span class="icon">↑</span> Entradas
+    </div>
+    <div class="nav-item" onclick="showPage('saidas', this)">
+      <span class="icon">↓</span> Saídas
+    </div>
+    <div class="nav-item" onclick="showPage('metas', this)">
+      <span class="icon">◎</span> Metas
+    </div>
 
-// ── UI do usuário logado ──────────────────────────────────────
+    <div class="nav-section">Planejamento</div>
+    <div class="nav-item" onclick="showPage('regras', this)">
+      <span class="icon">⊡</span> Regras de Gasto
+    </div>
+    <div class="nav-item" onclick="showPage('lembretes', this)">
+      <span class="icon">◻</span> Lembretes
+    </div>
+  </nav>
 
-/** Atualiza avatar, nome e usuário na topbar e no painel */
-function updateUserUI() {
-  if (!CURRENT_USER) return;
-  const initial = getInitial(CURRENT_USER.name);
+  <div class="sidebar-footer">
+    <div class="year-display">Ano</div>
+    <div class="year-val" id="sidebarYear">2025</div>
+  </div>
 
-  document.getElementById('topbarAvatar').textContent     = initial;
-  document.getElementById('topbarAvatar').style.background = CURRENT_USER.color;
-  document.getElementById('topbarUsername').textContent   = CURRENT_USER.name.split(' ')[0];
+</div>
 
-  document.getElementById('upAvatar').textContent     = initial;
-  document.getElementById('upAvatar').style.background = CURRENT_USER.color;
-  document.getElementById('upAvatar').style.color     = '#fff';
-  document.getElementById('upName').textContent       = CURRENT_USER.name;
-  document.getElementById('upUser').textContent       = '@' + CURRENT_USER.username;
-}
 
-function toggleUserPanel() { document.getElementById('userPanel').classList.toggle('open'); }
-function closeUserPanel()   { document.getElementById('userPanel').classList.remove('open'); }
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+<div class="main">
 
-// Fecha o painel ao clicar fora dele
-document.addEventListener('click', e => {
-  const panel = document.getElementById('userPanel');
-  const btn   = document.getElementById('topbarUserBtn');
-  if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) closeUserPanel();
-});
+  <!-- Topbar -->
+  <div class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="page-title" id="pageTitle">Dashboard</div>
+    <div class="topbar-right">
+      <span id="syncStatus" style="font-size:9px;transition:color .3s"></span>
+      <span id="topbarMonth" style="font-size:9px;color:var(--text3)">Janeiro 2025</span>
+      <div class="topbar-user" id="topbarUserBtn" onclick="toggleUserPanel()">
+        <div class="topbar-avatar" id="topbarAvatar" style="background:#7c6fff;color:#fff">U</div>
+        <span class="topbar-username" id="topbarUsername">usuário</span>
+        <span style="font-size:9px;color:var(--text3)">▾</span>
+      </div>
+    </div>
+  </div>
 
-// ── Salvar dados (debounced) ──────────────────────────────────
+  <!-- Conteúdo das páginas -->
+  <div class="content">
 
-/**
- * Salva DATA no Supabase com debounce de 800ms.
- * Exibe indicador de sincronização na topbar.
- */
-function saveData() {
-  if (!CURRENT_USER || !DATA) return;
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(async () => {
-    setSyncStatus('syncing');
-    try {
-      await sbFetch(
-        `user_data?user_id=eq.${CURRENT_USER.id}`,
-        'PATCH',
-        { data: DATA, updated_at: new Date().toISOString() }
-      );
-      setSyncStatus('ok');
-    } catch (e) {
-      setSyncStatus('error');
-      console.error('Supabase save error:', e);
-    }
-  }, 800);
-}
+    <!-- ── DASHBOARD ────────────────────────────────────────── -->
+    <div class="page active" id="page-dashboard">
 
-/** Atualiza o indicador de status de sincronização */
-function setSyncStatus(status) {
-  const el  = document.getElementById('syncStatus');
-  if (!el) return;
-  const map = {
-    syncing: ['↻ Salvando...', 'var(--text3)'],
-    ok:      ['☁ Salvo',       'var(--green)'],
-    error:   ['⚠ Erro ao salvar', 'var(--red)'],
-  };
-  const [txt, color] = map[status] || ['', ''];
-  el.textContent  = txt;
-  el.style.color  = color;
-}
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi balance" id="kpi-saldo">
+          <div class="kpi-label">Saldo Atual</div>
+          <div class="kpi-value" id="kpi-saldo-val">R$ 0,00</div>
+          <div class="kpi-sub"  id="kpi-saldo-sub">este mês</div>
+          <span class="kpi-icon">◈</span>
+        </div>
+        <div class="kpi income" onclick="showPage('entradas', document.querySelector('[onclick*=entradas]'))" style="cursor:pointer">
+          <div class="kpi-label">Entradas</div>
+          <div class="kpi-value" id="kpi-income-val">R$ 0,00</div>
+          <div class="kpi-sub">total do mês</div>
+          <span class="kpi-icon">↑</span>
+        </div>
+        <div class="kpi expense" onclick="showPage('saidas', document.querySelector('[onclick*=saidas]'))" style="cursor:pointer">
+          <div class="kpi-label">Despesas</div>
+          <div class="kpi-value" id="kpi-expense-val">R$ 0,00</div>
+          <div class="kpi-sub">total do mês</div>
+          <span class="kpi-icon">↓</span>
+        </div>
+        <div class="kpi saved">
+          <div class="kpi-label">Guardado</div>
+          <div class="kpi-value" id="kpi-saved-val">R$ 0,00</div>
+          <div class="kpi-sub">reserva</div>
+          <span class="kpi-icon">◆</span>
+        </div>
+        <div class="kpi health" onclick="showPage('regras', document.querySelector('[onclick*=regras]'))" style="cursor:pointer">
+          <div class="kpi-label">Saúde Financeira</div>
+          <div class="kpi-value" id="kpi-health-val">—</div>
+          <div class="kpi-sub"  id="kpi-health-sub">sem dados</div>
+          <span class="kpi-icon">♡</span>
+        </div>
+      </div>
 
-// ── Export / Import ───────────────────────────────────────────
+      <!-- Gráficos linha 1 -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Tendência Mensal</div>
+              <div class="chart-sub">Entradas vs Saídas ao longo do ano</div>
+            </div>
+            <div class="chart-filters">
+              <button class="filter-btn active" onclick="filterTrend('all',this)">Tudo</button>
+              <button class="filter-btn"        onclick="filterTrend('income',this)">Entradas</button>
+              <button class="filter-btn"        onclick="filterTrend('expense',this)">Saídas</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="trendChart" height="150"></canvas></div>
+        </div>
 
-/** Exporta todos os dados do usuário como JSON */
-function exportJSON() {
-  if (!DATA) return;
-  const payload = {
-    user:       CURRENT_USER.username,
-    name:       CURRENT_USER.name,
-    exportedAt: new Date().toISOString(),
-    data:       DATA,
-  };
-  downloadFile(
-    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
-    `financaspro_${CURRENT_USER.username}_${new Date().toISOString().slice(0, 10)}.json`
-  );
-  toast('JSON exportado com sucesso!');
-}
+        <div class="chart-card" onclick="showPage('saidas', document.querySelector('[onclick*=saidas]'))" style="cursor:pointer">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Forma de Pagamento</div>
+              <div class="chart-sub">Distribuição do mês</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="paymentChart" height="180"></canvas></div>
+        </div>
 
-/** Exporta entradas e saídas como CSV (compatível com Excel) */
-function exportCSV() {
-  if (!DATA) return;
-  const rows = [['Tipo', 'Dia', 'Mês', 'Ano', 'Descrição', 'Categoria', 'Valor', 'Pagamento', 'Parcelas']];
-  DATA.incomes.forEach(i  => rows.push(['Entrada', i.day, i.month + 1, i.year, i.desc, i.cat, i.value, '',         1]));
-  DATA.expenses.forEach(e => rows.push(['Saída',   e.day, e.month + 1, e.year, e.desc, e.cat, e.value, e.payment, e.installments || 1]));
+        <div class="chart-card" onclick="showPage('saidas', document.querySelector('[onclick*=saidas]'))" style="cursor:pointer">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Categorias</div>
+              <div class="chart-sub">Proporção de gastos</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="categoryChart" height="180"></canvas></div>
+        </div>
+      </div>
 
-  const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  downloadFile(
-    new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
-    `financaspro_${CURRENT_USER.username}_${new Date().toISOString().slice(0, 10)}.csv`
-  );
-  toast('CSV exportado com sucesso!');
-}
+      <!-- Gráficos linha 2 -->
+      <div class="charts-row2">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Por Dia</div>
+              <div class="chart-sub" id="dash-month-label">este mês</div>
+            </div>
+            <div class="chart-filters">
+              <button class="filter-btn active" onclick="filterDailyChart('expense',this)">Saídas</button>
+              <button class="filter-btn"        onclick="filterDailyChart('income',this)">Entradas</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="dailyChart" height="130"></canvas></div>
+        </div>
 
-/** Cria link de download e dispara o clique */
-function downloadFile(blob, filename) {
-  const a   = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+        <div class="chart-card" onclick="showPage('metas', document.querySelector('[onclick*=metas]'))" style="cursor:pointer">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Metas</div>
+              <div class="chart-sub">Progresso geral</div>
+            </div>
+          </div>
+          <div id="dashGoalsList" style="padding:4px 0"></div>
+        </div>
+      </div>
 
-// Importação
-let _importData = null;
+    </div><!-- /dashboard -->
 
-function handleFileDrop(e) {
-  e.preventDefault();
-  document.getElementById('importDrop').classList.remove('over');
-  if (e.dataTransfer.files[0]) readImportFile(e.dataTransfer.files[0]);
-}
 
-function handleFileImport(input) {
-  if (input.files[0]) readImportFile(input.files[0]);
-}
+    <!-- ── ENTRADAS ──────────────────────────────────────────── -->
+    <div class="page" id="page-entradas">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Entradas</div>
+          <div class="section-sub" id="entradas-month-label">Registros de entrada de dinheiro</div>
+        </div>
+        <button class="btn btn-green" onclick="openModal('modalEntrada')">+ Nova Entrada</button>
+      </div>
+      <div class="summary-row" id="entradas-summary"></div>
+      <div class="card">
+        <div class="chart-header" style="margin-bottom:12px">
+          <div class="chart-title">Registros do Mês</div>
+          <div class="chart-filters">
+            <select id="filterEntradaCat" onchange="renderEntradas()" style="width:auto;padding:4px 8px;font-size:9px">
+              <option value="">Todas categorias</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dia</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="entradas-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /entradas -->
 
-function readImportFile(file) {
-  if (!file.name.endsWith('.json')) return toast('Use um arquivo .json', 'error');
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const parsed  = JSON.parse(e.target.result);
-      _importData   = parsed.data || parsed;
-      const inc     = (_importData.incomes  || []).length;
-      const exp     = (_importData.expenses || []).length;
-      const goals   = (_importData.goals    || []).length;
 
-      document.getElementById('importPreview').style.display = 'block';
-      document.getElementById('importPreview').innerHTML =
-        `<strong>Prévia:</strong><br>
-         Entradas: ${inc} registro(s)<br>
-         Saídas: ${exp} registro(s)<br>
-         Metas: ${goals} meta(s)<br>
-         <span style="color:var(--yellow)">⚠ Substituirá dados atuais na nuvem</span>`;
-      document.getElementById('importConfirmBtn').style.display = 'block';
-    } catch (err) {
-      toast('Arquivo inválido ou corrompido', 'error');
-    }
-  };
-  reader.readAsText(file);
-}
+    <!-- ── SAÍDAS ────────────────────────────────────────────── -->
+    <div class="page" id="page-saidas">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Saídas</div>
+          <div class="section-sub" id="saidas-month-label">Controle de gastos do mês</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="fixed-toggle" onclick="toggleFixed()">
+            <div class="toggle" id="fixedToggle"></div>
+            <span>Gastos Fixos</span>
+          </div>
+          <button class="btn btn-danger" onclick="openModal('modalSaida')">+ Nova Saída</button>
+        </div>
+      </div>
+      <div class="summary-row" id="saidas-summary"></div>
 
-async function confirmImport() {
-  if (!_importData) return;
-  DATA        = { ...getDefaultData(), ..._importData };
-  _importData = null;
-  saveData();
-  document.getElementById('importPreview').style.display    = 'none';
-  document.getElementById('importConfirmBtn').style.display = 'none';
-  document.getElementById('importFile').value               = '';
-  closeModal('modalExportImport');
-  updateMonthUI();
-  renderDashboard();
-  toast('Dados importados e salvos na nuvem!');
-}
+      <!-- Seção de gastos fixos (oculta por padrão) -->
+      <div class="card mb-16" id="fixedExpensesSection" style="display:none">
+        <div class="chart-header" style="margin-bottom:12px">
+          <div class="chart-title">Gastos Fixos</div>
+          <button class="btn btn-ghost" onclick="openModal('modalFixedExpense')">+ Adicionar Fixo</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Pagamento</th><th></th></tr>
+            </thead>
+            <tbody id="fixed-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="chart-header" style="margin-bottom:12px">
+          <div class="chart-title">Registros do Mês</div>
+          <div class="chart-filters">
+            <select id="filterSaidaCat" onchange="renderSaidas()" style="width:auto;padding:4px 8px;font-size:9px">
+              <option value="">Todas categorias</option>
+            </select>
+            <select id="filterSaidaPay" onchange="renderSaidas()" style="width:auto;padding:4px 8px;font-size:9px">
+              <option value="">Todos pagamentos</option>
+              <option>Dinheiro</option><option>PIX</option><option>Débito</option><option>Crédito</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dia</th><th>Descrição</th><th>Categoria</th>
+                <th>Pagamento</th><th>Parcelas</th><th>Valor</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="saidas-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /saidas -->
+
+
+    <!-- ── METAS ─────────────────────────────────────────────── -->
+    <div class="page" id="page-metas">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Metas Financeiras</div>
+          <div class="section-sub">Acompanhe seus objetivos</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modalMeta')">+ Nova Meta</button>
+      </div>
+      <div class="goals-grid" id="goals-grid"></div>
+    </div><!-- /metas -->
+
+
+    <!-- ── REGRAS DE GASTO ───────────────────────────────────── -->
+    <div class="page" id="page-regras">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Regras de Gasto</div>
+          <div class="section-sub">Distribua sua renda com inteligência</div>
+        </div>
+        <button class="btn btn-ghost" onclick="saveRules()">Salvar Regras</button>
+      </div>
+      <div class="budget-grid" id="rules-grid"></div>
+      <div class="budget-suggest card mt-12">
+        <div class="chart-title" style="margin-bottom:12px">Sugestões para este mês</div>
+        <div id="suggest-list"></div>
+      </div>
+    </div><!-- /regras -->
+
+
+    <!-- ── LEMBRETES ─────────────────────────────────────────── -->
+    <div class="page" id="page-lembretes">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Lembretes</div>
+          <div class="section-sub">Bloco de anotações financeiro</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modalNote')">+ Novo Lembrete</button>
+      </div>
+      <div class="notepad">
+        <div class="note-list" id="notes-list"></div>
+        <div class="empty"     id="notes-empty" style="display:none">
+          <div class="empty-icon">◻</div>
+          <div class="empty-text">Nenhum lembrete</div>
+          <div class="empty-sub">Adicione notas e lembretes importantes</div>
+        </div>
+      </div>
+    </div><!-- /lembretes -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+
+<!-- ============================================================
+     MODAIS
+     ============================================================ -->
+
+<!-- Entrada -->
+<div class="modal-overlay" id="modalEntrada">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="entradaModalTitle">Nova Entrada</div>
+      <button class="modal-close" onclick="closeModal('modalEntrada')">✕</button>
+    </div>
+    <input type="hidden" id="editEntradaId">
+    <div class="form-grid">
+      <div class="form-row">
+        <div class="form-group"><label>Dia</label><input type="number" id="entradaDia" min="1" max="31" placeholder="DD"></div>
+        <div class="form-group"><label>Valor (R$)</label><input type="number" id="entradaValor" step="0.01" placeholder="0,00"></div>
+      </div>
+      <div class="form-group"><label>Descrição</label><input type="text" id="entradaDesc" placeholder="Ex: Salário, Freelance..."></div>
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="entradaCat">
+          <option>Salário</option><option>Freelance</option><option>Investimento</option>
+          <option>Presente</option><option>Bônus</option><option>Aluguel Recebido</option><option>Outro</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalEntrada')">Cancelar</button>
+      <button class="btn btn-green" onclick="saveEntrada()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saída -->
+<div class="modal-overlay" id="modalSaida">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="saidaModalTitle">Nova Saída</div>
+      <button class="modal-close" onclick="closeModal('modalSaida')">✕</button>
+    </div>
+    <input type="hidden" id="editSaidaId">
+    <div class="form-grid">
+      <div class="form-row">
+        <div class="form-group"><label>Dia</label><input type="number" id="saidaDia" min="1" max="31" placeholder="DD"></div>
+        <div class="form-group"><label>Valor Total (R$)</label><input type="number" id="saidaValor" step="0.01" placeholder="0,00" oninput="updateInstallmentPreview()"></div>
+      </div>
+      <div class="form-group"><label>Descrição</label><input type="text" id="saidaDesc" placeholder="Ex: Supermercado, Aluguel..."></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="saidaCat">
+            <option>Alimentação</option><option>Transporte</option><option>Moradia</option>
+            <option>Saúde</option><option>Educação</option><option>Lazer</option>
+            <option>Vestuário</option><option>Tecnologia</option><option>Serviços</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Forma de Pagamento</label>
+          <select id="saidaPagamento" onchange="updateInstallmentPreview()">
+            <option>Dinheiro</option><option>PIX</option><option>Débito</option><option>Crédito</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="parcelasGroup">
+        <label>Parcelas (apenas crédito)</label>
+        <select id="saidaParcelas" onchange="updateInstallmentPreview()">
+          <option value="1">À vista</option>
+          <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+          <option value="5">5x</option><option value="6">6x</option><option value="7">7x</option>
+          <option value="8">8x</option><option value="9">9x</option><option value="10">10x</option>
+          <option value="11">11x</option><option value="12">12x</option>
+        </select>
+      </div>
+      <div class="installment-preview" id="installmentPreview" style="display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalSaida')">Cancelar</button>
+      <button class="btn btn-danger" onclick="saveSaida()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gasto Fixo -->
+<div class="modal-overlay" id="modalFixedExpense">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Gasto Fixo</div>
+      <button class="modal-close" onclick="closeModal('modalFixedExpense')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Descrição</label><input type="text" id="fixedDesc" placeholder="Ex: Aluguel, Internet..."></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="fixedCat">
+            <option>Moradia</option><option>Alimentação</option><option>Transporte</option>
+            <option>Saúde</option><option>Educação</option><option>Lazer</option><option>Serviços</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Valor (R$)</label><input type="number" id="fixedValor" step="0.01" placeholder="0,00"></div>
+      </div>
+      <div class="form-group">
+        <label>Forma de Pagamento</label>
+        <select id="fixedPagamento">
+          <option>Dinheiro</option><option>PIX</option><option>Débito</option><option>Crédito</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFixedExpense')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFixedExpense()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meta -->
+<div class="modal-overlay" id="modalMeta">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="metaModalTitle">Nova Meta</div>
+      <button class="modal-close" onclick="closeModal('modalMeta')">✕</button>
+    </div>
+    <input type="hidden" id="editMetaId">
+    <div class="form-grid">
+      <div class="form-group"><label>Nome da Meta</label><input type="text" id="metaNome" placeholder="Ex: Viagem, Reserva de emergência..."></div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor Alvo (R$)</label><input type="number" id="metaValor" step="0.01" placeholder="0,00"></div>
+        <div class="form-group"><label>Prazo</label><input type="date" id="metaPrazo"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalMeta')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveMeta()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Adicionar valor à meta -->
+<div class="modal-overlay" id="modalAddGoal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Adicionar à Meta</div>
+      <button class="modal-close" onclick="closeModal('modalAddGoal')">✕</button>
+    </div>
+    <input type="hidden" id="addGoalMetaId">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Meta: <span id="addGoalMetaName" style="color:var(--accent)"></span></label>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor a Adicionar (R$)</label><input type="number" id="addGoalValor" step="0.01" placeholder="0,00"></div>
+        <div class="form-group"><label>Data</label><input type="date" id="addGoalData"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddGoal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAddToGoal()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lembrete -->
+<div class="modal-overlay" id="modalNote">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Novo Lembrete</div>
+      <button class="modal-close" onclick="closeModal('modalNote')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Anotação</label>
+        <textarea id="noteText" placeholder="Escreva seu lembrete ou anotação..." rows="4"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalNote')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveNote()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     TOAST CONTAINER
+     ============================================================ -->
+<div class="toast-container" id="toastContainer"></div>
+
+
+<!-- ============================================================
+     SCRIPTS — ordem de carregamento importa!
+     db.js deve vir antes de app.js (usa sbFetch, SESSION_KEY)
+     data.js deve vir antes dos módulos de página
+     ============================================================ -->
+<script src="js/data.js"></script>
+<script src="js/db.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/entradas.js"></script>
+<script src="js/saidas.js"></script>
+<script src="js/pages.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
