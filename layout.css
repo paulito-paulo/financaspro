@@ -1,0 +1,232 @@
+/* ============================================================
+   BASE.CSS — Variáveis, reset, tipografia, utilitários
+   ============================================================ */
+
+:root {
+  /* Cores de fundo */
+  --bg:      #0a0a0f;
+  --bg2:     #10101a;
+  --bg3:     #161624;
+  --bg4:     #1e1e30;
+
+  /* Bordas */
+  --border:  rgba(255, 255, 255, 0.06);
+  --border2: rgba(255, 255, 255, 0.1);
+
+  /* Texto */
+  --text:    #e8e8f0;
+  --text2:   #8888a8;
+  --text3:   #555570;
+
+  /* Cores de destaque */
+  --accent:  #7c6fff;
+  --accent2: #5b4ff5;
+  --green:   #2dd4a0;
+  --red:     #ff5f5f;
+  --yellow:  #ffd166;
+  --blue:    #4fc3f7;
+  --orange:  #ff9a5c;
+
+  /* Misc */
+  --card-r:  12px;
+  --mono:    'DM Mono', monospace;
+  --sans:    'Syne', sans-serif;
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html   { scroll-behavior: smooth; }
+body   {
+  background:  var(--bg);
+  color:       var(--text);
+  font-family: var(--mono);
+  font-size:   12px;
+  min-height:  100vh;
+  overflow-x:  hidden;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: var(--bg2); }
+::-webkit-scrollbar-thumb  { background: var(--bg4); border-radius: 2px; }
+
+/* ── Formulários ────────────────────────────────────────────── */
+input, select, textarea {
+  background:    var(--bg3);
+  border:        1px solid var(--border2);
+  border-radius: 8px;
+  color:         var(--text);
+  font-family:   var(--mono);
+  font-size:     11px;
+  padding:       8px 12px;
+  transition:    border-color .2s;
+  width:         100%;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: var(--text3); }
+select option  { background: var(--bg3); color: var(--text); }
+textarea       { resize: vertical; min-height: 80px; }
+
+/* ── Botões ─────────────────────────────────────────────────── */
+.btn {
+  padding:       6px 14px;
+  border-radius: 8px;
+  border:        none;
+  cursor:        pointer;
+  font-family:   var(--mono);
+  font-size:     11px;
+  transition:    all .2s;
+  display:       flex;
+  align-items:   center;
+  gap:           6px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+
+.btn-ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+
+.btn-danger { background: rgba(255,95,95,.15); color: var(--red); border: 1px solid rgba(255,95,95,.2); }
+.btn-danger:hover { background: rgba(255,95,95,.25); }
+
+.btn-green { background: rgba(45,212,160,.15); color: var(--green); border: 1px solid rgba(45,212,160,.2); }
+.btn-green:hover { background: rgba(45,212,160,.25); }
+
+.btn-login {
+  width:         100%;
+  padding:       11px;
+  border-radius: 10px;
+  font-size:     12px;
+  font-family:   var(--sans);
+  font-weight:   600;
+  letter-spacing: .3px;
+}
+
+/* ── Badges ─────────────────────────────────────────────────── */
+.badge        { padding: 2px 8px; border-radius: 12px; font-size: 9px; font-weight: 500; }
+.badge-green  { background: rgba(45,212,160,.15);  color: var(--green);  }
+.badge-red    { background: rgba(255,95,95,.15);   color: var(--red);    }
+.badge-blue   { background: rgba(79,195,247,.15);  color: var(--blue);   }
+.badge-yellow { background: rgba(255,209,102,.15); color: var(--yellow); }
+.badge-purple { background: rgba(124,111,255,.15); color: var(--accent); }
+.badge-orange { background: rgba(255,154,92,.15);  color: var(--orange); }
+
+/* ── Tabelas ─────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table       { width: 100%; border-collapse: collapse; }
+th {
+  font-size:       9px;
+  text-transform:  uppercase;
+  letter-spacing:  1px;
+  color:           var(--text3);
+  padding:         8px 12px;
+  border-bottom:   1px solid var(--border);
+  text-align:      left;
+  font-weight:     500;
+}
+td {
+  padding:       9px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size:     11px;
+  color:         var(--text2);
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td      { background: var(--bg3); color: var(--text); }
+tr               { transition: background .15s; }
+
+/* ── Formulário grupos ──────────────────────────────────────── */
+.form-grid { display: grid; gap: 12px; }
+.form-row  { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label {
+  font-size:       9px;
+  color:           var(--text3);
+  text-transform:  uppercase;
+  letter-spacing:  1px;
+}
+
+/* ── Cards ───────────────────────────────────────────────────── */
+.card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: var(--card-r);
+  padding:       18px;
+  transition:    border-color .2s;
+}
+.card:hover { border-color: var(--border2); }
+
+/* ── Icon buttons ────────────────────────────────────────────── */
+.icon-btn {
+  background:    var(--bg3);
+  border:        1px solid var(--border);
+  border-radius: 6px;
+  width:         26px;
+  height:        26px;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  cursor:        pointer;
+  font-size:     11px;
+  color:         var(--text2);
+  transition:    all .2s;
+}
+.icon-btn:hover { border-color: var(--border2); color: var(--text); }
+
+/* ── Toggle switch ───────────────────────────────────────────── */
+.fixed-toggle { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text2); cursor: pointer; user-select: none; }
+.toggle {
+  width:         32px;
+  height:        18px;
+  background:    var(--bg3);
+  border-radius: 9px;
+  border:        1px solid var(--border2);
+  position:      relative;
+  cursor:        pointer;
+  transition:    background .2s;
+}
+.toggle.on { background: var(--accent); }
+.toggle::after {
+  content:       '';
+  position:      absolute;
+  top:           2px;
+  left:          2px;
+  width:         12px;
+  height:        12px;
+  background:    #fff;
+  border-radius: 50%;
+  transition:    transform .2s;
+}
+.toggle.on::after { transform: translateX(14px); }
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.empty        { text-align: center; padding: 40px 20px; color: var(--text3); }
+.empty-icon   { font-size: 32px; margin-bottom: 10px; opacity: .4; }
+.empty-text   { font-size: 11px; margin-bottom: 4px; }
+.empty-sub    { font-size: 10px; }
+
+/* ── Utilitários ─────────────────────────────────────────────── */
+.text-green   { color: var(--green);  }
+.text-red     { color: var(--red);    }
+.text-yellow  { color: var(--yellow); }
+.text-accent  { color: var(--accent); }
+.text-blue    { color: var(--blue);   }
+.flex         { display: flex; }
+.flex-center  { display: flex; align-items: center; }
+.gap-8        { gap: 8px; }
+.gap-12       { gap: 12px; }
+.mt-12        { margin-top: 12px; }
+.mt-16        { margin-top: 16px; }
+.mb-12        { margin-bottom: 12px; }
+.mb-16        { margin-bottom: 16px; }
+.w-full       { width: 100%; }
+.cursor-pointer { cursor: pointer; }
+.divider      { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* ── Animações ───────────────────────────────────────────────── */
+@keyframes fadeIn    { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:translateY(0); } }
+@keyframes countUp   { from { opacity:0; transform:translateY(4px);  } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse     { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+.count-anim { animation: countUp .4s ease forwards; }
+.pulse      { animation: pulse 2s infinite; }
+canvas      { cursor: pointer; }
